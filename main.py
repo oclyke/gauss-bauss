@@ -10,14 +10,14 @@ from collections import namedtuple
 IMAGE_PATH = "image_crop.jpg"
 SCALE_PATH = "scale.txt"
 
-# define a named tuple to hold gaussian parameters
-GaussianParameters = namedtuple("GaussianParameters", ["A", "mux", "muy", "sigmax", "sigmay", "offset"])
+# define a named tuple to hold intensity parameters
+IntensityParameters = namedtuple("IntensityParameters", ["A", "wx", "wy"])
 
-def gaussian(location, A, mux, muy, sigmax, sigmay, offset):
+def intensity(location, A, wx, wy):
     x, y = location
-    z_x = (1 / (sigmax * np.sqrt(2 * np.pi))) * np.exp(-1 * ((x - mux)**2 / (2 * sigmax**2)))
-    z_y = (1 / (sigmay * np.sqrt(2 * np.pi))) * np.exp(-1 * ((y - muy)**2 / (2 * sigmay**2)))
-    g = (A * z_x * z_y) + offset
+    zx = A / (wx) * (np.exp(-1 * (x**2 / wx**2)))
+    zy = A / (wy) * (np.exp(-1 * (y**2 / wy**2)))
+    g = (zx * zy)
     return g.ravel()
 
 def main():
@@ -35,14 +35,11 @@ def main():
     # convert image to numpy array
     image_data = np.array(image)
 
-    # create a reasonable initial guess for the gaussian parameters
-    initial_guess = GaussianParameters(
+    # create a reasonable initial guess for the intensity parameters
+    initial_guess = IntensityParameters(
         A = np.max(image) - np.min(image),
-        mux = 0.5,
-        muy = 0.5,
-        sigmax = 1,
-        sigmay = 1,
-        offset = np.min(image)
+        wx = 1,
+        wy = 1,
     )
 
     # create a meshgrid of x and y values that matches the image size
@@ -54,7 +51,7 @@ def main():
     x, y = np.meshgrid(x, y)
 
     # show the initial guess as an image with data normalized to 0-255
-    initial_guess_data = gaussian((x, y), *initial_guess)
+    initial_guess_data = intensity((x, y), *initial_guess)
     initial_guess_data = initial_guess_data - np.min(initial_guess_data)
     initial_guess_data = initial_guess_data / np.max(initial_guess_data)
     initial_guess_data = initial_guess_data * 255
@@ -62,13 +59,13 @@ def main():
     initial_guess_image = Image.fromarray(initial_guess_data.reshape((numy, numx)), mode="L")
     # initial_guess_image.show()
 
-    # use scipy curve fit to fit the gaussian to the data
-    print("Fitting gaussian to data... ", end="")
-    popt, pcov = opt.curve_fit(gaussian, (x, y), image_data.ravel(), p0=initial_guess)
+    # use scipy curve fit to fit the intensity to the data
+    print("Fitting intensity to data... ", end="")
+    popt, pcov = opt.curve_fit(intensity, (x, y), image_data.ravel(), p0=initial_guess)
     print("complete")
 
-    # show the fitted gaussian as an image with data normalized to 0-255
-    fitted_data = gaussian((x, y), *popt)
+    # show the fitted intensity as an image with data normalized to 0-255
+    fitted_data = intensity((x, y), *popt)
     fitted_data = fitted_data - np.min(fitted_data)
     fitted_data = fitted_data / np.max(fitted_data)
     fitted_data = fitted_data * 255
@@ -90,14 +87,11 @@ def main():
     image.save(f"{args.output}/{args.case}/original.{image_format.lower()}", image_format)
 
     # save the fitted parameters
-    fitted = GaussianParameters(*popt)
+    fitted = IntensityParameters(*popt)
     output = ""
     output += f"A: {fitted.A}\n"
-    output += f"mux: {fitted.mux}\n"
-    output += f"muy: {fitted.muy}\n"
-    output += f"sigmax: {fitted.sigmax * scale * numx} cm\n"
-    output += f"sigmay: {fitted.sigmay * scale * numy} cm\n"
-    output += f"offset: {fitted.offset}\n"
+    output += f"wx: {fitted.wx * scale * numx} cm\n"
+    output += f"wy: {fitted.wy * scale * numy} cm\n"
     with open(f"{args.output}/{args.case}/parameters.txt", "w") as f:
         f.write(output)
 
@@ -106,7 +100,7 @@ def main():
     print("\n\t".join(["\n", *output.split("\n")]), end="")
 
 if __name__ == "__main__":
-    args = argparse.ArgumentParser(description="Calculate FWHM of a gaussian spot profile")
+    args = argparse.ArgumentParser(description="Calculate FWHM of a intensity spot profile")
     args.add_argument("-c", "--case", required=True, help="path to data case directory")
     args.add_argument("-o", "--output", required=True, help="path to output directory")
 
